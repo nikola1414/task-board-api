@@ -39,4 +39,4 @@ jobs:
       - name: Migrations apply cleanly and match the models
         run: alembic upgrade head && alembic check && alembic downgrade base
       - name: Test
-        run: pytest --cov=app --cov-report=term-missing
+        run: pytest
