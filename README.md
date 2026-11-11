@@ -140,6 +140,10 @@ npm run dev        # http://localhost:5173 (API must be running on :8000)
 npm run test:e2e
 ```
 
+## Project management
+
+The work is tracked in Jira: one epic per phase, one story per ticket, delivered in six sprints. Each story links to the commits that implemented it. New work uses the ticket key in branch names and commits (e.g. `MBA-50-due-date-reminders`) so Jira links it automatically.
+
 ## Project layout
 
 ```
