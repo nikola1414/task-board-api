@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import Any, Literal
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import cache
 from app.db import get_db
 from app.deps import can_edit, can_view
 from app.models import ActivityLog, Comment, Priority, ProjectMember, Task, TaskStatus
@@ -49,6 +51,7 @@ def create_task(
     db.flush()
     _log(db, m, task, f"created task '{task.title}'")
     db.commit()
+    cache.invalidate_task_list(project_id)
     return task
 
 
@@ -66,6 +69,12 @@ def list_tasks(
     _: ProjectMember = Depends(can_view),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    cache_params = json.dumps(
+        [status_, priority, assignee_id, str(due_before), q, sort, limit, offset]
+    )
+    if (cached := cache.get_task_list(project_id, cache_params)) is not None:
+        return dict(cached)
+
     stmt = select(Task).where(Task.project_id == project_id)
     if status_:
         stmt = stmt.where(Task.status == status_)
@@ -82,12 +91,14 @@ def list_tasks(
     column = getattr(Task, sort.lstrip("-"))
     order = column.desc().nulls_last() if sort.startswith("-") else column.asc().nulls_last()
     items = db.scalars(stmt.order_by(order, Task.id).limit(limit).offset(offset)).all()
-    return {
-        "items": [TaskOut.model_validate(t) for t in items],
+    page = {
+        "items": [TaskOut.model_validate(t).model_dump(mode="json") for t in items],
         "total": total,
         "limit": limit,
         "offset": offset,
     }
+    cache.set_task_list(project_id, cache_params, page)
+    return page
 
 
 @router.get("/{task_id}", response_model=TaskOut)
@@ -126,6 +137,7 @@ def update_task(
         else:
             _log(db, m, task, f"{field} changed from {old or 'none'} to {new or 'none'}")
     db.commit()
+    cache.invalidate_task_list(project_id)
     return task
 
 
@@ -141,6 +153,7 @@ def delete_task(
     db.flush()
     db.delete(task)
     db.commit()
+    cache.invalidate_task_list(project_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.cache import login_allowed
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import User
@@ -24,8 +25,21 @@ def register(body: UserCreate, db: Session = Depends(get_db)) -> User:
 
 
 @router.post("/login", response_model=Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> Token:
-    """OAuth2 password flow: send `username` (your email) and `password` as form data."""
+def login(
+    request: Request,
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+) -> Token:
+    """OAuth2 password flow: send `username` (your email) and `password` as form data.
+
+    Rate-limited per client IP.
+    """
+    if not login_allowed(request.client.host if request.client else "unknown"):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many login attempts, try again in a minute",
+            headers={"Retry-After": "60"},
+        )
     user = db.scalar(select(User).where(User.email == form.username.lower()))
     if user is None or not verify_password(user.password_hash, form.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")

@@ -11,6 +11,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from app import cache  # noqa: E402
 from app.db import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -27,6 +28,7 @@ def _schema() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _clean_db() -> Iterator[None]:
+    cache.client.flushdb()
     yield
     tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
